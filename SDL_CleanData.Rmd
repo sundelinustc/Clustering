@@ -1,0 +1,116 @@
+---
+title: "SDL_CleanData"
+author: "Delin Sun"
+date: "2/17/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setting up Packages
+```{r, include=FALSE, warning=FALSE, echo=FALSE}
+library(tidyverse) # for data manipulation
+library(readxl) # for loading excel files
+library(lme4) # for linear mixed regression models
+library(lmerTest)# for p-value of lme4's models
+library(afex) # for repeated-measures ANOVA
+library(rstatix) # for repeated-measures ANOVA
+library(multcomp) # multiple comparisons
+library(emmeans) # pairwise-comparisons
+library(ggsci)
+library(RColorBrewer) # for some extra colours in one of the graphs
+library(table1) # make Table 1, mainly demographic & clinical info
+library(sjPlot) # plot interactions of lm/lmer outputs
+library(ggpubr) # plot multiple panels
+library(reshape2) # including melt function to plot heatmaps
+```
+## # Funciton to heatmap missing value
+```{r,echo=FALSE}
+SDL_heatmap_missing <- function(df){
+  df %>% mutate(Subject = row_number()) %>% gather(-Subject, key = "key", value = "val") %>% mutate(isna = is.na(val)) %>% ggplot(aes(key, Subject, fill = isna)) + geom_raster(alpha=0.8) + scale_fill_manual(name = "", values = c('steelblue', 'tomato3'), labels = c("Present", "Missing"))
+}
+```
+
+## Data loading & cleaning
+```{r,echo=FALSE}
+# Loading raw data (full data)
+#fname <- "..\\Data\\CCA_master_database.xlsx"
+#df <- read_excel(fname, sheet="Included", na=c("","NA","N/A"))
+
+# Loading test data
+fname <- "..\\Data\\testing_clusteranalysis.csv"
+df <- read.csv(fname,header=T,sep=",")
+
+# heatmap of missing values in raw data
+SDL_heatmap_missing(df)
+
+# Remove columns with more than 50% NA
+df1 <- df[, which(colMeans(is.na(df))<0.50)]
+SDL_heatmap_missing(df1)
+
+# Further remove rows with NA
+df2 <- df1[which(rowMeans(is.na(df1))==0), ]
+SDL_heatmap_missing(df2)
+
+# re-encode variables
+df2$Gender <- df2$Gender %>% str_replace_all(c("F"="0", "M"="1"))
+df2$Hand   <- df2$Hand   %>% str_replace_all(c("L"="0", "R"="1", "Ambi"="2"))
+#df2$Race   <- df2$Race   %>% str_replace_all(c("White"="0", "Black"="1", "Asian"="3", "Biracial"="3", "Multi"="4")) # only existed for full data, not testing data
+#df2$Ethnicity    <- df2$Ethnicity %>% str_replace_all(c("Hispanic/Latino"="0", "Not Hispanic/Latino"="1", "Not Hispanic/Latina"="1")) # only existed for full data, not testing data
+df2$PTSD_DX_curr <- df2$PTSD_DX_curr %>% str_replace_all(c("control"="0", "PTSD"="1"))
+df2$PTSD_DX_LT   <- df2$PTSD_DX_LT   %>% str_replace_all(c("control"="0", "PTSD"="1"))
+
+# save the data file
+#df0 <- df2 %>% dplyr::select(qcube_1_a.1:qcube_9.1)
+write.csv(df2, '..\\Data\\data_all.csv', row.names=FALSE) # data including demographic, clinical, & ML features
+write.csv(df2[,8:19], '..\\Data\\data_ML.csv', row.names=FALSE) # data including demographic, clinical, & ML features
+```
+
+
+## Full data
+```{r,echo=FALSE}
+# Load raw data (full data)
+fname <- "..\\Data\\CCA_master_database.xlsx"
+df1 <- read_excel(fname, sheet="Included", na=c("","NA","N/A"))
+
+# Load pothole data (full data)
+fname <- "..\\Data\\potholes_bins.xlsx"
+df2 <- read_excel(fname, sheet="Sheet1")
+
+# Merge data (full data)
+df0 <- inner_join(df1,df2,by=c("Scan_ID"="Subject_scan"))
+
+# Make full data
+df_all <- df0 %>% dplyr::select(c("Scan_ID","Age","Gender","Hand","head_inury_yes","PTSD_DX_curr","PTSD_DX_LT","small (25-50 voxels)","medium (50-75 voxels)","large (75-100 voxels)","100+ voxels","X_bdi_score","X_dast_score","education","employed","suicide","drink_alcohol","alcohol_problems","smokes"))
+
+df_all$Gender <- df_all$Gender %>% str_replace_all(c("F"="0", "M"="1"))
+df_all$Hand   <- df_all$Hand   %>% str_replace_all(c("L"="0", "R"="1", "Ambi"="1")) # 5 subjects are "Ambi" in handedness
+df_all$PTSD_DX_curr <- df_all$PTSD_DX_curr %>% str_replace_all(c("control"="0", "PTSD"="1"))
+df_all$PTSD_DX_LT   <- df_all$PTSD_DX_LT   %>% str_replace_all(c("control"="0", "PTSD"="1"))
+
+df_all <- df_all %>% rename("small..25.50.voxels."="small (25-50 voxels)", "medium..50.75.voxels."="medium (50-75 voxels)", "large..75.100.voxels."="large (75-100 voxels)", "X100..voxels"="100+ voxels")
+
+# Load test1 data
+fname <- "..\\Data\\testing_clusteranalysis.csv"
+df_test1 <- read.csv(fname,header=T,sep=",") # strings were not replaced yet
+
+# Make test1 & test2 data
+df_test1 <- df_all[(df_all$Scan_ID %in% df_test1$Scan_ID),]
+df_test2 <- df_all[!(df_all$Scan_ID %in% df_test1$Scan_ID),]
+
+# Remove rows with NA
+df_test1 <- df_test1[which(rowMeans(is.na(df_test1))==0), ] # remove 3 subjects with missing values
+
+# Display missing values
+SDL_heatmap_missing(df_test1)
+SDL_heatmap_missing(df_test2)
+
+# Save data for Matlab
+df_test1 %>% write.csv('..\\Data\\data_all_test1.csv', row.names=FALSE) # all data
+df_test1 %>% dplyr::select(Age:X100..voxels, -c("head_inury_yes")) %>% write.csv('..\\Data\\data_ML_test1.csv', row.names=FALSE) # data including demographic, clinical, & ML features
+
+df_test2 %>% write.csv('..\\Data\\data_all_test2.csv', row.names=FALSE) # all data
+df_test2 %>% dplyr::select(Age:X100..voxels, -c("head_inury_yes")) %>% write.csv('..\\Data\\data_ML_test2.csv', row.names=FALSE) # data including demographic, clinical, & ML features
+```

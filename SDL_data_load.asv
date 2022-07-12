@@ -1,0 +1,21 @@
+function SDL_data_load(SDL)
+
+% load & clean data for analyses
+
+%% Initialization
+fdir_in = fullfile(SDL.path, 'Ashley', 'Data'); % path of data
+T = readtable(fullfile(fdir_in, 'testing_clusteranalysis.csv')); % all clinical data
+T = T(:,[2,5:end]); % extract nums only to simplify the data for test purpose only
+
+
+%% Pipeline
+% method_name - selected clustering method; 0: hierarchial clustering, 1: DPC, 2: OPTICS
+% input_data - m by n data matrix; m: number of samples, n: number of
+% features
+% reference_label - m by 1 vector; Optional input paramter, default is []
+mkdir('result');
+[bestScore0, bestLabel0, bestFeature0] = runPipeline(0, T{:,:}, []);
+T
+save('');
+%% END
+end
